@@ -39,7 +39,7 @@ export default function RootLayout({
         {/* Include face-api.js script */}
         <script src={FACEAPI} async></script>
         <script src={TFJS} async></script>
-        
+        <link rel="icon" href="/favicon.ico" sizes="any" />
         {/* PWA icons */}
         <link rel="icon" href="/icons/icon-192x192.png" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />

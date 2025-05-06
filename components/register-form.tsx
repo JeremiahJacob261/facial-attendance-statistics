@@ -1,16 +1,15 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { UserPlus, Camera, Upload, X } from "lucide-react"
+import { UserPlus, Camera, Upload, X, RefreshCw } from "lucide-react"
 import { useMobile } from "@/hooks/use-mobile"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
 import { v4 as uuidv4 } from "uuid"
 
@@ -24,6 +23,8 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
   const [isRegistering, setIsRegistering] = useState(false)
   const [cameraActive, setCameraActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("")
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
@@ -54,50 +55,35 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
     fetchCourses()
   }, [toast])
 
-  const activateCamera = async () => {
-    setError(null)
+  useEffect(() => {
+    // Fetch available camera devices
+    const loadCameraDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter((device) => device.kind === "videoinput")
+        setDevices(videoDevices)
 
-    // Check for basic getUserMedia support
-    if (
-      !navigator.mediaDevices &&
-      !navigator.getUserMedia &&
-      !navigator.webkitGetUserMedia &&
-      !navigator.mozGetUserMedia
-    ) {
-      setError("Your browser doesn't support camera access. Please try a different browser.")
-      return
-    }
-
-    // Ensure we have the mediaDevices API (with polyfill for older browsers)
-    if (navigator.mediaDevices === undefined) {
-      navigator.mediaDevices = {} as any
-    }
-
-    // Polyfill getUserMedia for older browsers
-    if (navigator.mediaDevices.getUserMedia === undefined) {
-      navigator.mediaDevices.getUserMedia = (constraints) => {
-        const getUserMedia =
-          navigator.getUserMedia || (navigator as any).webkitGetUserMedia || (navigator as any).mozGetUserMedia
-
-        if (!getUserMedia) {
-          return Promise.reject(new Error("getUserMedia is not implemented in this browser"))
+        if (videoDevices.length > 0) {
+          const defaultDevice = isMobile
+            ? videoDevices.find((device) => device.label.toLowerCase().includes("front")) || videoDevices[0]
+            : videoDevices[0]
+          setSelectedDeviceId(defaultDevice.deviceId)
         }
-
-        return new Promise((resolve, reject) => {
-          getUserMedia.call(navigator, constraints, resolve, reject)
-        })
+      } catch (err) {
+        console.error("Error loading camera devices:", err)
+        setError("Could not access camera devices. Please check permissions.")
       }
     }
 
+    loadCameraDevices()
+  }, [isMobile])
+
+  const activateCamera = async () => {
+    setError(null)
+
     try {
       const constraints = {
-        video: isMobile
-          ? {
-              facingMode: "user",
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-            }
-          : true,
+        video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : { facingMode: "user" },
       }
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
@@ -109,15 +95,10 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
     } catch (err: any) {
       console.error("Error accessing webcam:", err)
 
-      // More specific error messages
       if (err.name === "NotAllowedError") {
         setError("Camera access denied. Please allow camera access in your browser settings.")
       } else if (err.name === "NotFoundError") {
         setError("No camera found. Please ensure your device has a working camera.")
-      } else if (err.name === "NotReadableError" || err.name === "AbortError") {
-        setError("Could not access your camera. It may be in use by another application.")
-      } else if (err.name === "SecurityError") {
-        setError("Camera access blocked due to security restrictions. Please ensure you're using HTTPS.")
       } else {
         setError(`Could not access webcam: ${err.message}. Please check permissions and try again.`)
       }
@@ -133,11 +114,28 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
     }
   }
 
+  const handleDeviceChange = async (deviceId: string) => {
+    setSelectedDeviceId(deviceId)
+    if (cameraActive) {
+      stopCamera()
+      await activateCamera()
+    }
+  }
+
+  const refreshDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoDevices = devices.filter((device) => device.kind === "videoinput")
+      setDevices(videoDevices)
+    } catch (err) {
+      console.error("Error refreshing devices:", err)
+    }
+  }
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
 
-      // Check if it's an image file
       if (!file.type.startsWith("image/")) {
         toast({
           title: "Invalid file type",
@@ -150,7 +148,6 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
       setPhotoFile(file)
       setPhotoPreview(URL.createObjectURL(file))
 
-      // Stop camera if it's active
       if (cameraActive) {
         stopCamera()
       }
@@ -428,30 +425,6 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
         />
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-emerald-800">Courses</Label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded-md p-2 border-emerald-200">
-          {courses.length > 0 ? (
-            courses.map((course) => (
-              <div key={course.id} className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id={`course-${course.id}`}
-                  checked={selectedCourses.includes(course.id)}
-                  onChange={() => toggleCourseSelection(course.id)}
-                  className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                <label htmlFor={`course-${course.id}`} className="text-sm text-emerald-800">
-                  {course.code} - {course.name}
-                </label>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-emerald-500">No courses available</p>
-          )}
-        </div>
-      </div>
-
       {error && (
         <Alert variant="destructive" className="text-sm">
           <AlertCircle className="h-4 w-4" />
@@ -462,7 +435,6 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
       <div className="space-y-2">
         <Label className="text-emerald-800">Student Photo</Label>
         <div className="flex flex-col gap-2">
-          {/* Photo preview */}
           {photoPreview ? (
             <div className="relative w-full h-48 border rounded-md overflow-hidden border-emerald-200">
               <img
@@ -493,8 +465,7 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
                 }}
               />
 
-              {/* Camera activation button */}
-              {!cameraActive && !isRegistering && !photoPreview && (
+              {!cameraActive && !photoPreview && (
                 <div
                   className="flex items-center justify-center bg-emerald-50 rounded-md p-4"
                   style={{ height: isMobile ? "120px" : "160px" }}
@@ -522,31 +493,34 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
             </div>
           )}
 
-          {/* Hidden file input */}
           <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" className="hidden" />
 
-          {/* Photo upload button */}
-          {!photoPreview && !cameraActive && (
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              variant="outline"
-              size="sm"
-              className="text-xs flex items-center gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            >
-              <Upload className="h-3 w-3" />
-              Upload Photo
-            </Button>
-          )}
-
-          {cameraActive && !isRegistering && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={stopCamera}
-              className="w-full text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            >
-              Cancel Camera
-            </Button>
+          {cameraActive && (
+            <div className="flex items-center gap-2">
+              <Select value={selectedDeviceId} onValueChange={handleDeviceChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Camera" />
+                </SelectTrigger>
+                <SelectContent>
+                  {devices.map((device) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${devices.indexOf(device) + 1}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" onClick={refreshDevices} className="h-8 w-8">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={stopCamera}
+                className="text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+              >
+                Cancel Camera
+              </Button>
+            </div>
           )}
         </div>
       </div>

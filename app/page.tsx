@@ -9,8 +9,6 @@ import RegisterForm from "@/components/register-form"
 import AttendanceLog from "@/components/attendance-log"
 import RegisteredList from "@/components/registered-list"
 import StatisticsPage from "@/components/statistics-page"
-import PWAInstallPrompt from "@/components/pwa-install-prompt"
-import PWAInstallButton from "@/components/pwa-install-button"
 import MobileDrawer from "@/components/mobile-drawer"
 import DesktopMenu from "@/components/desktop-menu"
 
@@ -29,7 +27,6 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-2">
           <DesktopMenu activeTab={activeTab} setActiveTab={setActiveTab} />
-          <PWAInstallButton />
         </div>
       </header>
 
@@ -55,9 +52,15 @@ export default function Home() {
 
       <footer className="bg-white border-t border-emerald-100 py-3 px-4 text-center text-sm text-emerald-700">
         <p>© {new Date().getFullYear()} Face Attendance System. All rights reserved.</p>
+        <p>Built by : <br/>
+FANIMI SAMUEL<br/>
+Eyimegwu Chukwugozilim Allwell<br/>
+
+
+
+        </p>
       </footer>
 
-      <PWAInstallPrompt />
     </main>
   )
 }
