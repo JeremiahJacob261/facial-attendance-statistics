@@ -40,7 +40,7 @@ export default function AttendanceLog() {
     // Fetch courses
     const fetchCourses = async () => {
       try {
-        const { data, error } = await supabase.from("ox_courses").select("id, code, name").order("code")
+        const { data, error } = await supabase.from("ox_courses").select("id, code, name").order("id")
 
         if (error) throw error
         if (data && data.length > 0) {
