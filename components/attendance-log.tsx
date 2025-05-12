@@ -8,6 +8,7 @@ import { useMobile } from "@/hooks/use-mobile"
 import { supabase } from "@/lib/supabase"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import FaceDetection from "@/components/face-detection"
+import FaceCompare from "@/components/facecompare"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface Course {
@@ -207,7 +208,8 @@ export default function AttendanceLog() {
           </Button>
         </CardHeader>
         <CardContent className="px-3 sm:px-6 pt-4">
-          <FaceDetection isAttendanceActive={isAttendanceActive} setIsAttendanceActive={setIsAttendanceActive} />
+          {/* <FaceDetection isAttendanceActive={isAttendanceActive} setIsAttendanceActive={setIsAttendanceActive} /> */}
+          <FaceCompare/>
         </CardContent>
       </Card>
 

@@ -32,7 +32,7 @@ export default function RegisteredList() {
   const loadStudents = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase.from("ox_students").select("id, name, matric_no, photo_url").order("name")
+      const { data, error } = await supabase.from("students").select("id, name, matric_no, photo_url").order("name")
 
       if (error) throw error
       setStudents(data || [])
@@ -51,7 +51,7 @@ export default function RegisteredList() {
   const handleDelete = async (id: number, name: string) => {
     try {
       // Delete student from Supabase
-      const { error } = await supabase.from("ox_students").delete().eq("id", id)
+      const { error } = await supabase.from("students").delete().eq("id", id)
 
       if (error) throw error
 

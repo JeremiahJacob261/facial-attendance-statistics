@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect, useRef, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Camera, CameraOff, Upload, FileVideo, Filter, SwitchCamera } from "lucide-react"
+import { AlertCircle, Camera, CameraOff, Upload, FileVideo, Filter, SwitchCamera, Check, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useMobile } from "@/hooks/use-mobile"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { Trash2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import StudentSearch from "./student-search"
+import { Card, CardContent } from "@/components/ui/card"
 
 interface Course {
   id: number
@@ -28,6 +29,7 @@ interface FaceDetectionProps {
 export default function FaceDetection({ isAttendanceActive, setIsAttendanceActive }: FaceDetectionProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const captureCanvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +60,13 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
     isMatch: boolean
     similarity: number
   } | null>(null)
+
+  // Auto capture state
+  const [capturedImage, setCapturedImage] = useState<string | null>(null)
+  const [capturedDescriptor, setCapturedDescriptor] = useState<Float32Array | null>(null)
+  const [isCaptureMode, setIsCaptureMode] = useState(false)
+  const [captureAttempted, setCaptureAttempted] = useState(false)
+  const captureIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Load face-api models and fetch courses
   useEffect(() => {
@@ -111,6 +120,10 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
 
       if (attendanceIntervalRef.current) {
         clearInterval(attendanceIntervalRef.current)
+      }
+
+      if (captureIntervalRef.current) {
+        clearInterval(captureIntervalRef.current)
       }
     }
   }, [isMobile])
@@ -184,12 +197,82 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
     }
   }, [])
 
-  // Face detection for comparison
+  // Auto capture face when in capture mode
   useEffect(() => {
-    if (cameraActive && compareImageUrl && !isComparing && !isAttendanceActive) {
-      compareFaceWithReference()
+    if (cameraActive && isCaptureMode && !capturedImage && !capturedDescriptor && compareImageUrl) {
+      if (captureIntervalRef.current) {
+        clearInterval(captureIntervalRef.current)
+      }
+
+      captureIntervalRef.current = setInterval(async () => {
+        if (!videoRef.current || !canvasRef.current) return
+
+        try {
+          const faceapi = (window as any).faceapi
+          const options = new faceapi.TinyFaceDetectorOptions()
+          const result = await faceapi
+            .detectSingleFace(videoRef.current, options)
+            .withFaceLandmarks()
+            .withFaceDescriptor()
+
+          if (result) {
+            // Clear previous capture attempts
+            setCaptureAttempted(true)
+
+            // Draw face detection on canvas
+            const displaySize = {
+              width: videoRef.current.clientWidth,
+              height: videoRef.current.clientHeight,
+            }
+            faceapi.matchDimensions(canvasRef.current, displaySize)
+            const resizedDetection = faceapi.resizeResults(result, displaySize)
+            const ctx = canvasRef.current.getContext("2d")
+            if (ctx) {
+              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
+              faceapi.draw.drawDetections(canvasRef.current, [resizedDetection])
+            }
+
+            // Capture the image and descriptor
+            const canvas = document.createElement("canvas")
+            canvas.width = videoRef.current.videoWidth
+            canvas.height = videoRef.current.videoHeight
+            const context = canvas.getContext("2d")
+            if (context) {
+              context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+              const dataUrl = canvas.toDataURL("image/png")
+              setCapturedImage(dataUrl)
+              setCapturedDescriptor(result.descriptor)
+
+              toast({
+                title: "Face captured",
+                description: "Face detected and captured for comparison",
+              })
+
+              // Stop the interval after successful capture
+              if (captureIntervalRef.current) {
+                clearInterval(captureIntervalRef.current)
+                captureIntervalRef.current = null
+              }
+
+              // Start comparison
+              setTimeout(() => {
+                compareCapturedWithReference()
+              }, 500)
+            }
+          }
+        } catch (err) {
+          console.error("Error during face capture:", err)
+        }
+      }, 200)
+
+      return () => {
+        if (captureIntervalRef.current) {
+          clearInterval(captureIntervalRef.current)
+          captureIntervalRef.current = null
+        }
+      }
     }
-  }, [cameraActive, compareImageUrl, isComparing, isAttendanceActive])
+  }, [cameraActive, isCaptureMode, capturedImage, capturedDescriptor, compareImageUrl])
 
   const stopCamera = () => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -435,8 +518,9 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
       faceapi.matchDimensions(canvasRef.current, displaySize)
 
       try {
+        const options = new faceapi.TinyFaceDetectorOptions()
         const detections = await faceapi
-          .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+          .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks()
           .withFaceDescriptors()
 
@@ -447,7 +531,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
 
           if (labeledFaceDescriptors.length > 0) {
-            const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5)
+            const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6)
 
             resizedDetections.forEach((detection) => {
               const { x, y, width, height } = detection.detection.box
@@ -455,12 +539,12 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
               const label = bestMatch.label
 
               // Draw bounding box
-              ctx.strokeStyle = bestMatch.distance < 0.5 ? "green" : "red"
+              ctx.strokeStyle = bestMatch.distance < 0.6 ? "green" : "red"
               ctx.lineWidth = 2
               ctx.strokeRect(x, y, width, height)
 
               // Draw label background
-              ctx.fillStyle = bestMatch.distance < 0.5 ? "rgba(0, 128, 0, 0.7)" : "rgba(255, 0, 0, 0.7)"
+              ctx.fillStyle = bestMatch.distance < 0.6 ? "rgba(0, 128, 0, 0.7)" : "rgba(255, 0, 0, 0.7)"
               const textWidth = ctx.measureText(label).width
               ctx.fillRect(x, y - 25, textWidth + 10, 25)
 
@@ -469,7 +553,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
               ctx.fillStyle = "white"
               ctx.fillText(label, x + 5, y - 8)
 
-              if (bestMatch.distance < 0.5 && label !== "unknown") {
+              if (bestMatch.distance < 0.6 && label !== "unknown") {
                 markAttendance(label)
               }
             })
@@ -556,7 +640,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
       faceapi.matchDimensions(canvasRef.current, displaySize)
 
       // Create face matcher
-      const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5)
+      const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6)
 
       // Calculate total frames to process (1 frame per second)
       const duration = videoRef.current.duration
@@ -581,8 +665,9 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
         })
 
         // Detect faces in the current frame
+        const options = new faceapi.TinyFaceDetectorOptions()
         const detections = await faceapi
-          .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+          .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks()
           .withFaceDescriptors()
 
@@ -601,12 +686,12 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
             const label = bestMatch.label
 
             // Draw bounding box
-            ctx.strokeStyle = bestMatch.distance < 0.5 ? "green" : "red"
+            ctx.strokeStyle = bestMatch.distance < 0.6 ? "green" : "red"
             ctx.lineWidth = 2
             ctx.strokeRect(x, y, width, height)
 
             // Draw label background
-            ctx.fillStyle = bestMatch.distance < 0.5 ? "rgba(0, 128, 0, 0.7)" : "rgba(255, 0, 0, 0.7)"
+            ctx.fillStyle = bestMatch.distance < 0.6 ? "rgba(0, 128, 0, 0.7)" : "rgba(255, 0, 0, 0.7)"
             const textWidth = ctx.measureText(label).width
             ctx.fillRect(x, y - 25, textWidth + 10, 25)
 
@@ -616,7 +701,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
             ctx.fillText(label, x + 5, y - 8)
 
             // Mark attendance if face is recognized
-            if (bestMatch.distance < 0.5 && label !== "unknown") {
+            if (bestMatch.distance < 0.6 && label !== "unknown") {
               await markAttendance(label)
 
               // If we haven't seen this student before, get their name
@@ -675,6 +760,10 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
     setCompareImageUrl(imageUrl)
     setCompareStudentName(studentName)
     setCompareStudentId(studentId)
+    setCapturedImage(null)
+    setCapturedDescriptor(null)
+    setComparisonResult(null)
+    setCaptureAttempted(false)
 
     toast({
       title: "Ready for face comparison",
@@ -688,15 +777,24 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
           title: "Camera activated",
           description: "Camera started for face comparison",
         })
+        // Start capture mode
+        setIsCaptureMode(true)
       })
     } else {
-      // If camera is already active, start comparison
-      compareFaceWithReference()
+      // If camera is already active, start capture mode
+      setIsCaptureMode(true)
     }
   }
 
-  const compareFaceWithReference = async () => {
-    if (!compareImageUrl || !videoRef.current || !canvasRef.current) return
+  const compareCapturedWithReference = async () => {
+    if (!compareImageUrl || !capturedDescriptor) {
+      toast({
+        title: "Missing data for comparison",
+        description: "Both reference image and captured face descriptor are required for comparison",
+        variant: "destructive",
+      })
+      return
+    }
 
     setIsComparing(true)
     setComparisonResult(null)
@@ -704,7 +802,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
     try {
       toast({
         title: "Starting face comparison",
-        description: "Comparing your face with the reference image...",
+        description: "Comparing captured face with the reference image...",
       })
 
       const faceapi = (window as any).faceapi
@@ -714,80 +812,34 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
       img.crossOrigin = "anonymous" // Important to avoid CORS issues
       img.src = compareImageUrl
 
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve()
+        img.onerror = () => reject(new Error("Failed to load reference image"))
       })
 
       // Detect face in the reference image
-      const referenceDetection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor()
+      const options = new faceapi.TinyFaceDetectorOptions()
+      const referenceDetection = await faceapi.detectSingleFace(img, options).withFaceLandmarks().withFaceDescriptor()
 
       if (!referenceDetection) {
         throw new Error("No face detected in the reference image")
       }
 
-      // Detect face in the video
-      const videoDetection = await faceapi
-        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor()
-
-      if (!videoDetection) {
-        throw new Error("No face detected in the camera. Please position your face clearly in the frame.")
-      }
-
-      // Calculate similarity
-      const distance = faceapi.euclideanDistance(referenceDetection.descriptor, videoDetection.descriptor)
-      const similarity = 1 - distance
-      const isMatch = distance < 0.5 // Threshold for match
+      // Calculate similarity using euclidean distance
+      const distance = faceapi.euclideanDistance(capturedDescriptor, referenceDetection.descriptor)
+      const similarity = (1 - distance) * 100
+      const isMatch = similarity >= 50 // Threshold for match is 50%
 
       setComparisonResult({
         isMatch,
-        similarity: Math.round(similarity * 100),
+        similarity: Math.round(similarity),
       })
-
-      // Draw the result on canvas
-      const displaySize = {
-        width: videoRef.current.clientWidth,
-        height: videoRef.current.clientHeight,
-      }
-
-      canvasRef.current.width = displaySize.width
-      canvasRef.current.height = displaySize.height
-
-      faceapi.matchDimensions(canvasRef.current, displaySize)
-
-      const resizedDetection = faceapi.resizeResults(videoDetection, displaySize)
-      const ctx = canvasRef.current.getContext("2d")
-
-      if (ctx) {
-        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-
-        // Draw bounding box
-        const { x, y, width, height } = resizedDetection.detection.box
-        ctx.strokeStyle = isMatch ? "green" : "red"
-        ctx.lineWidth = 3
-        ctx.strokeRect(x, y, width, height)
-
-        // Draw label background
-        ctx.fillStyle = isMatch ? "rgba(0, 128, 0, 0.7)" : "rgba(255, 0, 0, 0.7)"
-        const label = isMatch ? `Match: ${similarity.toFixed(2) * 100}%` : "No Match"
-        const textWidth = ctx.measureText(label).width
-        ctx.fillRect(x, y - 30, textWidth + 10, 30)
-
-        // Draw label text
-        ctx.font = "16px Arial"
-        ctx.fillStyle = "white"
-        ctx.fillText(label, x + 5, y - 10)
-      }
 
       // Show toast with result
       if (isMatch) {
         toast({
           title: "Face Match Confirmed!",
-          description: `Match confirmed with ${compareStudentName} (${similarity.toFixed(2) * 100}% similarity)`,
+          description: `Match confirmed with ${compareStudentName} (${Math.round(similarity)}% similarity)`,
         })
 
         // Mark attendance if it's a match
@@ -797,7 +849,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
       } else {
         toast({
           title: "No Face Match",
-          description: `The face does not match with ${compareStudentName} (${similarity.toFixed(2) * 100}% similarity)`,
+          description: `The face does not match with ${compareStudentName} (${Math.round(similarity)}% similarity)`,
           variant: "destructive",
         })
       }
@@ -810,7 +862,21 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
       })
     } finally {
       setIsComparing(false)
+      setIsCaptureMode(false)
     }
+  }
+
+  const retryCapture = () => {
+    setCapturedImage(null)
+    setCapturedDescriptor(null)
+    setCaptureAttempted(false)
+    setComparisonResult(null)
+    setIsCaptureMode(true)
+
+    toast({
+      title: "Retrying capture",
+      description: "Please position your face clearly in the camera",
+    })
   }
 
   return (
@@ -824,9 +890,9 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
           <div className="flex items-center">
             <div className={`mr-2 p-1 rounded-full ${comparisonResult.isMatch ? "bg-emerald-100" : "bg-red-100"}`}>
               {comparisonResult.isMatch ? (
-                <div className="h-4 w-4 text-emerald-600">✓</div>
+                <Check className="h-4 w-4 text-emerald-600" />
               ) : (
-                <div className="h-4 w-4 text-red-600">✗</div>
+                <X className="h-4 w-4 text-red-600" />
               )}
             </div>
             <div>
@@ -839,6 +905,51 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
             </div>
           </div>
         </Alert>
+      )}
+
+      {/* Captured image and reference image comparison */}
+      {capturedImage && compareImageUrl && (
+        <div className="grid grid-cols-2 gap-4 animate-fade-in">
+          <Card className="overflow-hidden">
+            <CardContent className="p-2">
+              <h3 className="text-sm font-medium mb-2 text-center">Captured Image</h3>
+              <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden rounded-md">
+                <img
+                  src={capturedImage || "/placeholder.svg"}
+                  alt="Captured face"
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="overflow-hidden">
+            <CardContent className="p-2">
+              <h3 className="text-sm font-medium mb-2 text-center">Reference Image</h3>
+              <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden rounded-md">
+                <img
+                  src={compareImageUrl || "/placeholder.svg"}
+                  alt="Reference face"
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Retry capture button */}
+      {capturedImage && !isComparing && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={retryCapture}
+            className="text-xs flex items-center gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50 btn-hover-effect"
+          >
+            <Camera className="h-3 w-3 mr-1" />
+            Retry Capture
+          </Button>
+        </div>
       )}
 
       <div className="relative animate-fade-in">
@@ -882,6 +993,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
             style={{ maxHeight: isMobile ? "300px" : "480px" }}
           />
           <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+          <canvas ref={captureCanvasRef} className="hidden" />
 
           {/* Camera activation button for mobile */}
           {isMobile && !cameraActive && !isLoading && !videoFile && (
@@ -910,6 +1022,36 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
                 <Upload className="h-4 w-4" />
                 Upload Video
               </Button>
+            </div>
+          )}
+
+          {/* Capture mode overlay */}
+          {cameraActive && isCaptureMode && !capturedImage && (
+            <div className="absolute inset-0 border-4 border-emerald-500 rounded-lg animate-pulse-custom">
+              <div className="absolute top-0 left-0 right-0 bg-emerald-500/80 text-white text-center py-1 text-sm">
+                Position your face in the frame for auto-capture
+              </div>
+            </div>
+          )}
+
+          {/* Capture attempted but failed */}
+          {captureAttempted && !capturedImage && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div className="bg-white p-4 rounded-lg text-center max-w-xs">
+                <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                <p className="text-sm font-medium">Face detection failed</p>
+                <p className="text-xs text-gray-500 mb-3">Please ensure your face is clearly visible</p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCaptureAttempted(false)
+                    setIsCaptureMode(true)
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  Try Again
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -951,7 +1093,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             className="text-xs flex items-center gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50 btn-hover-effect"
-            disabled={isProcessing}
+            disabled={isProcessing || isCaptureMode}
           >
             <Upload className="h-3 w-3" />
             Upload Video
@@ -978,7 +1120,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
               size="sm"
               onClick={switchCamera}
               className="text-xs flex items-center gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50 btn-hover-effect"
-              disabled={isProcessing || isComparing}
+              disabled={isProcessing || isComparing || isCaptureMode}
             >
               <SwitchCamera className="h-3 w-3 mr-1" />
               Switch Camera
@@ -992,6 +1134,7 @@ export default function FaceDetection({ isAttendanceActive, setIsAttendanceActiv
               size="sm"
               onClick={stopCamera}
               className="text-xs flex items-center gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50 btn-hover-effect"
+              disabled={isCaptureMode}
             >
               <CameraOff className="h-3 w-3" />
               Turn Off Camera

@@ -109,7 +109,7 @@ export default function StatisticsPage() {
 
   const fetchStudents = async () => {
     try {
-      const { data, error } = await supabase.from("ox_students").select("id, name, matric_no").order("name")
+      const { data, error } = await supabase.from("students").select("id, name, matric_no").order("name")
 
       if (error) throw error
       setStudents(data || [])
@@ -149,7 +149,7 @@ export default function StatisticsPage() {
 
       // Get all students
       const { data: allStudents, error: studentsError } = await supabase
-        .from("ox_students")
+        .from("students")
         .select("id, name, matric_no")
 
       if (studentsError) throw studentsError

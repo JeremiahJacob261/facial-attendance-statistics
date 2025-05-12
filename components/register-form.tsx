@@ -337,7 +337,7 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
         throw new Error("Failed to extract face features. Please try again.")
       }
       const { data: existingStudent, error: checkError } = await supabase
-        .from("ox_students")
+        .from("students")
         .select("id")
         .eq("matric_no", matricNo)
         .single()
@@ -348,7 +348,7 @@ export default function RegisterForm({ onRegister }: RegisterFormProps) {
         throw new Error(`A student with matric number ${matricNo} already exists`)
       }
       const { data: student, error: insertError } = await supabase
-        .from("ox_students")
+        .from("students")
         .insert({
           name,
           matric_no: matricNo,
