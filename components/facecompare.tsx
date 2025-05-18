@@ -386,7 +386,6 @@ export default function FaceCompare() {
           <CardContent>
             <Tabs defaultValue="captured">
               <TabsList className="mb-4">
-                <TabsTrigger value="captured">Captured</TabsTrigger>
                 <TabsTrigger value="compare">Compare</TabsTrigger>
               </TabsList>
 
@@ -406,28 +405,18 @@ export default function FaceCompare() {
 
               <TabsContent value="compare">
                 <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      value={imageUrl}
-                      readOnly
-                      placeholder="Student photo"
-                    />
+                  <div className="flex-col gap-4">
+                    <p>{(imageUrl?.length < 5) ? "Student Photo Not Loaded" : "Student Image Loaded"}</p>
                     <Button
                       onClick={compareFaces}
                       disabled={!captured || isComparing || !studentId || !selectedCourse}
                     >
-                      <Upload className="mr-2 h-4 w-4" /> Compare
+                      Authenticate
                     </Button>
                   </div>
                   <div className="bg-gray-100 aspect-video rounded-md flex items-center justify-center overflow-hidden">
-                    {isComparing ? (
-                      <Skeleton className="w-full h-full" />
-                    ) : compareImageRef.current?.src ? (
-                      <img
-                        ref={compareImageRef}
-                        alt="To compare"
-                        className="max-w-full max-h-full object-contain"
-                      />
+                    {(imageUrl?.length > 5) ? (
+                      <img src={imageUrl} alt="student photo"/>
                     ) : (
                       <p className="text-gray-500">No student photo</p>
                     )}
