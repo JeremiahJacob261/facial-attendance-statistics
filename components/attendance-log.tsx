@@ -36,6 +36,7 @@ export default function AttendanceLog() {
   const [loading, setLoading] = useState(true)
   const isMobile = useMobile()
   const [isAttendanceActive, setIsAttendanceActive] = useState(false)
+  // const { toast } = useToast(); // If you want to add user-facing toast notifications for errors
 
   useEffect(() => {
     // Fetch courses
@@ -150,34 +151,117 @@ export default function AttendanceLog() {
       setAttendanceLog(formattedData)
     } catch (error: any) {
       console.error("Error fetching attendance records:", error)
+      // toast({ title: "Error", description: "Failed to fetch attendance records.", variant: "destructive" });
     } finally {
       setLoading(false)
     }
   }
 
-  const exportAttendance = () => {
-    if (attendanceLog.length === 0) return
+  const exportAttendance = async () => {
+    if (attendanceLog.length === 0 && !selectedCourse) {
+        console.warn("No attendance data or course selected to export.");
+        // Potentially show a toast message to the user
+        // toast({ title: "Export Failed", description: "No data to export or course not selected.", variant: "destructive" });
+        return;
+    }
+    if (!selectedCourse) {
+        console.warn("No course selected to export.");
+        // toast({ title: "Export Failed", description: "Please select a course to export attendance.", variant: "destructive" });
+        return;
+    }
 
     const selectedCourseInfo = courses.find((c) => c.id === selectedCourse)
     const courseCode = selectedCourseInfo ? selectedCourseInfo.code : "Unknown"
 
-    const csvContent = [
-      `Course: ${courseCode} - ${selectedCourseInfo?.name || "Unknown"}`,
-      `Date: ${format(new Date(selectedDate), "dd MMM yyyy")}`,
-      "",
-      "Matric No,Name,Status",
-      ...attendanceLog.map((record) => `${record.student_matric},${record.student_name},${record.status}`),
-    ].join("\n")
+    setLoading(true); // Indicate loading state during fetch for export
 
-    const blob = new Blob([csvContent], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `attendance-${courseCode}-${selectedDate}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    try {
+      // 1. Fetch all unique student_ids from ox_attendance for the selected course
+      const { data: attendanceStudentIds, error: studentIdsError } = await supabase
+        .from('ox_attendance')
+        .select('student_id')
+        .eq('course_id', selectedCourse);
+
+      if (studentIdsError) {
+        console.error('Error fetching student IDs for export:', studentIdsError);
+        // toast({ title: "Export Error", description: "Could not fetch student list for the course.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      let allCourseStudentsList: { id: number; name: string; matric_no: string }[] = [];
+      if (attendanceStudentIds && attendanceStudentIds.length > 0) {
+        const uniqueStudentIds = [...new Set(attendanceStudentIds.map(att => att.student_id))];
+
+        if (uniqueStudentIds.length > 0) {
+          // 2. Fetch details for these student_ids from ox_students
+          const { data: studentsData, error: studentsError } = await supabase
+            .from('ox_students')
+            .select('id, name, matric_no')
+            .in('id', uniqueStudentIds)
+            .order('name'); // Sort students by name
+
+          if (studentsError) {
+            console.error('Error fetching student details for export:', studentsError);
+            // toast({ title: "Export Error", description: "Could not fetch student details.", variant: "destructive" });
+            setLoading(false);
+            return;
+          }
+          allCourseStudentsList = studentsData || [];
+        }
+      }
+
+      // 3. `attendanceLog` (students present on selectedDate for selectedCourse) is already in state.
+      // Create a Set of student_ids who were present for quick lookup.
+      const presentStudentIds = new Set(attendanceLog.map(record => record.student_id));
+
+      // 4. Generate CSV content rows
+      const csvRows = allCourseStudentsList.map(student => {
+        const isPresent = presentStudentIds.has(student.id);
+        const status = isPresent ? "Present" : "Absent";
+        // Ensure matric_no and name are not null to avoid "null" string in CSV
+        const matricNo = student.matric_no || "N/A";
+        const name = student.name || "Unknown Student";
+        return `${matricNo},${name},${status}`;
+      });
+      
+      // If allCourseStudentsList is empty but attendanceLog has entries (e.g. manual entries not tied to a student list)
+      // This case should ideally not happen if data is consistent.
+      // For robustness, if csvRows is empty but attendanceLog is not, fall back to original behavior for those present.
+      let finalCsvRows = csvRows;
+      if (csvRows.length === 0 && attendanceLog.length > 0) {
+          finalCsvRows = attendanceLog.map((record) => {
+            const matricNo = record.student_matric || "N/A";
+            const name = record.student_name || "Unknown Student";
+            // Assuming record.status is "present" as per current logic
+            return `${matricNo},${name},${record.status || "Present"}`;
+          });
+      }
+
+
+      const csvContent = [
+        `Course: ${courseCode} - ${selectedCourseInfo?.name || "Unknown"}`,
+        `Date: ${format(new Date(selectedDate), "dd MMM yyyy")}`,
+        "",
+        "Matric No,Name,Status",
+        ...finalCsvRows,
+      ].join("\n")
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `attendance-${courseCode}-${selectedDate}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Error during export process:", error);
+      // toast({ title: "Export Failed", description: "An unexpected error occurred during export.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

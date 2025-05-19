@@ -38,6 +38,7 @@ export default function FaceCompare() {
   const [matricNo, setMatricNo] = useState("")
   const [studentId, setStudentId] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState("")
+  const [studentName, setStudentName] = useState("")
   const [courses, setCourses] = useState<{ id: string; code: string; name: string }[]>([])
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null)
 
@@ -81,7 +82,7 @@ export default function FaceCompare() {
       }
       const { data, error } = await supabase
         .from("students")
-        .select("id, photo_url")
+        .select("id, photo_url,name")
         .eq("matric_no", matricNo)
         .single()
       if (error || !data) {
@@ -89,9 +90,12 @@ export default function FaceCompare() {
         setTimeout(() => setErrorMessage(""), 3000)
         setStudentId(null)
         setImageUrl("")
+        setStudentName("")
       } else {
         setStudentId(data.id)
         setImageUrl(data.photo_url)
+        setStudentName(data.name)
+        console.log("Student data:", data)
       }
     })()
   }, [matricNo, supabase])
@@ -406,6 +410,7 @@ export default function FaceCompare() {
               <TabsContent value="compare">
                 <div className="space-y-4">
                   <div className="flex-col gap-4">
+                    <p>{studentName}</p>
                     <p>{(imageUrl?.length < 5) ? "Student Photo Not Loaded" : "Student Image Loaded"}</p>
                     <Button
                       onClick={compareFaces}
@@ -416,7 +421,9 @@ export default function FaceCompare() {
                   </div>
                   <div className="bg-gray-100 aspect-video rounded-md flex items-center justify-center overflow-hidden">
                     {(imageUrl?.length > 5) ? (
+                        
                       <img src={imageUrl} alt="student photo"/>
+                     
                     ) : (
                       <p className="text-gray-500">No student photo</p>
                     )}
