@@ -20,23 +20,27 @@ import { useToast } from "@/hooks/use-toast"; // Ensure this path is correct
 
 // Placeholder for your logo component or an img tag
 const Logo = () => (
-  <div className="flex justify-center mb-6">
-    {/* Replace with your actual logo */}
-    <svg
-      className="w-16 h-16 text-primary" // Example styling
-      fill="none"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path d="M12 14l9-5-9-5-9 5 9 5z"></path>
-      <path d="M12 14l6.16-3.422A12.083 12.083 0 0112 21a12.083 12.083 0 01-6.16-10.422L12 14z"></path>
-      <path d="M3.5 9.5L12 14l8.5-4.5"></path>
-      <path d="M3.5 9.5V14a8.5 8.5 0 008.5 4.5 8.5 8.5 0 008.5-4.5V9.5L12 5l-8.5 4.5z"></path>
-    </svg>
-  </div>
+    <div className="flex items-center mb-6">
+        <div className="w-16 h-16">
+            <img src="/logo.png" alt="Logo" className="w-16 h-16" />
+        </div>
+        <div className="relative -ml-8">
+            <svg
+                className="w-16 h-16 text-primary"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+            >
+                <path d="M12 14l9-5-9-5-9 5 9 5z"></path>
+                <path d="M12 14l6.16-3.422A12.083 12.083 0 0112 21a12.083 12.083 0 01-6.16-10.422L12 14z"></path>
+                <path d="M3.5 9.5L12 14l8.5-4.5"></path>
+                <path d="M3.5 9.5V14a8.5 8.5 0 008.5 4.5 8.5 8.5 0 008.5-4.5V9.5L12 5l-8.5 4.5z"></path>
+            </svg>
+        </div>
+    </div>
 );
 
 // Define the default path for authenticated users, should match middleware
