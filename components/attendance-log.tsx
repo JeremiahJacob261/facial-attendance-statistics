@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import FaceDetection from "@/components/face-detection"
 import FaceCompare from "@/components/facecompare"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import AttendanceDurationSetter from "@/components/attendance-duration-setter"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface Course {
   id: number
@@ -266,116 +268,127 @@ export default function AttendanceLog() {
 
   return (
     <div className="space-y-4">
-      {/* Video Feed Card */}
-      <Card className="w-full border-emerald-100 shadow-md animate-fade-in">
-        <CardHeader className="flex flex-row items-center justify-between pb-2 px-3 sm:px-6 bg-gradient-to-r from-emerald-50 to-emerald-100 border-b border-emerald-100">
-          <CardTitle className="text-lg sm:text-xl text-emerald-900">Take Attendance</CardTitle>
-         
-        </CardHeader>
-        <CardContent className="px-3 sm:px-6 pt-4">
-          {/* <FaceDetection isAttendanceActive={isAttendanceActive} setIsAttendanceActive={setIsAttendanceActive} /> */}
-          <FaceCompare/>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="attendance" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="attendance">Take Attendance</TabsTrigger>
+          <TabsTrigger value="settings">Duration Settings</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="attendance" className="space-y-4">
+          {/* Video Feed Card */}
+          <Card className="w-full border-emerald-100 shadow-md animate-fade-in">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 px-3 sm:px-6 bg-gradient-to-r from-emerald-50 to-emerald-100 border-b border-emerald-100">
+              <CardTitle className="text-lg sm:text-xl text-emerald-900">Take Attendance</CardTitle>
+            </CardHeader>
+            <CardContent className="px-3 sm:px-6 pt-4">
+              <FaceCompare/>
+            </CardContent>
+          </Card>
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 animate-fade-in">
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <Filter className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-600" />
-            <Select
-              value={selectedCourse?.toString() || ""}
-              onValueChange={(value) => setSelectedCourse(Number(value))}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 animate-fade-in">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Filter className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-600" />
+                <Select
+                  value={selectedCourse?.toString() || ""}
+                  onValueChange={(value) => setSelectedCourse(Number(value))}
+                >
+                  <SelectTrigger className="w-[180px] text-xs sm:text-sm h-8 sm:h-10 border-emerald-200 focus:ring-emerald-500">
+                    <SelectValue placeholder="Select course" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((course) => (
+                      <SelectItem key={course.id} value={course.id.toString()}>
+                        {course.code} - {course.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-600" />
+                <Select value={selectedDate} onValueChange={setSelectedDate} disabled={dates.length === 0}>
+                  <SelectTrigger className="w-[180px] text-xs sm:text-sm h-8 sm:h-10 border-emerald-200 focus:ring-emerald-500">
+                    <SelectValue placeholder="Select date" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dates.length > 0 ? (
+                      dates.map((date) => (
+                        <SelectItem key={date} value={date}>
+                          {format(new Date(date), "dd MMM yyyy")}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value={selectedDate}>{format(new Date(selectedDate), "dd MMM yyyy")}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              size={isMobile ? "sm" : "default"}
+              onClick={exportAttendance}
+              disabled={attendanceLog.length === 0}
+              className="text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 btn-hover-effect"
             >
-              <SelectTrigger className="w-[180px] text-xs sm:text-sm h-8 sm:h-10 border-emerald-200 focus:ring-emerald-500">
-                <SelectValue placeholder="Select course" />
-              </SelectTrigger>
-              <SelectContent>
-                {courses.map((course) => (
-                  <SelectItem key={course.id} value={course.id.toString()}>
-                    {course.code} - {course.name}
-                  </SelectItem>
+              <Download className="h-3 w-3 mr-1" />
+              Export
+            </Button>
+          </div>
+
+          <div className="border rounded-md border-emerald-100 shadow-sm animate-fade-in hover-card">
+            <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 p-2 border-b border-emerald-100">
+              <h3 className="font-medium text-sm sm:text-base text-emerald-800">Attendance ({attendanceLog.length})</h3>
+            </div>
+
+            {loading ? (
+              <div className="p-3 sm:p-4 text-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-emerald-600 mx-auto"></div>
+                <p className="text-sm text-emerald-600 mt-2">Loading attendance records...</p>
+              </div>
+            ) : attendanceLog.length > 0 ? (
+              <ul className="divide-y divide-emerald-100 max-h-[300px] sm:max-h-[400px] overflow-y-auto">
+                {attendanceLog.map((record, index) => (
+                  <li
+                    key={record.id}
+                    className="p-2 sm:p-3 flex items-center hover:bg-emerald-50 transition-colors duration-200"
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    {record.student_photo ? (
+                      <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full overflow-hidden mr-2 sm:mr-3 border border-emerald-200">
+                        <img
+                          src={record.student_photo || "/placeholder.svg"}
+                          alt={record.student_name}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mr-2 sm:mr-3 text-xs sm:text-sm">
+                        {record.student_name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-medium text-sm sm:text-base text-emerald-900">{record.student_name}</p>
+                      <p className="text-xs text-emerald-600">
+                        {record.student_matric} • {record.status}
+                      </p>
+                    </div>
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
+              </ul>
+            ) : (
+              <div className="p-3 sm:p-4 text-center text-emerald-600 text-sm">No attendance records for this date</div>
+            )}
           </div>
+        </TabsContent>
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-600" />
-            <Select value={selectedDate} onValueChange={setSelectedDate} disabled={dates.length === 0}>
-              <SelectTrigger className="w-[180px] text-xs sm:text-sm h-8 sm:h-10 border-emerald-200 focus:ring-emerald-500">
-                <SelectValue placeholder="Select date" />
-              </SelectTrigger>
-              <SelectContent>
-                {dates.length > 0 ? (
-                  dates.map((date) => (
-                    <SelectItem key={date} value={date}>
-                      {format(new Date(date), "dd MMM yyyy")}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value={selectedDate}>{format(new Date(selectedDate), "dd MMM yyyy")}</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <Button
-          variant="outline"
-          size={isMobile ? "sm" : "default"}
-          onClick={exportAttendance}
-          disabled={attendanceLog.length === 0}
-          className="text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 btn-hover-effect"
-        >
-          <Download className="h-3 w-3 mr-1" />
-          Export
-        </Button>
-      </div>
-
-      <div className="border rounded-md border-emerald-100 shadow-sm animate-fade-in hover-card">
-        <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 p-2 border-b border-emerald-100">
-          <h3 className="font-medium text-sm sm:text-base text-emerald-800">Attendance ({attendanceLog.length})</h3>
-        </div>
-
-        {loading ? (
-          <div className="p-3 sm:p-4 text-center">
-            <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-emerald-600 mx-auto"></div>
-            <p className="text-sm text-emerald-600 mt-2">Loading attendance records...</p>
-          </div>
-        ) : attendanceLog.length > 0 ? (
-          <ul className="divide-y divide-emerald-100 max-h-[300px] sm:max-h-[400px] overflow-y-auto">
-            {attendanceLog.map((record, index) => (
-              <li
-                key={record.id}
-                className="p-2 sm:p-3 flex items-center hover:bg-emerald-50 transition-colors duration-200"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                {record.student_photo ? (
-                  <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full overflow-hidden mr-2 sm:mr-3 border border-emerald-200">
-                    <img
-                      src={record.student_photo || "/placeholder.svg"}
-                      alt={record.student_name}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mr-2 sm:mr-3 text-xs sm:text-sm">
-                    {record.student_name.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div>
-                  <p className="font-medium text-sm sm:text-base text-emerald-900">{record.student_name}</p>
-                  <p className="text-xs text-emerald-600">
-                    {record.student_matric} • {record.status}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="p-3 sm:p-4 text-center text-emerald-600 text-sm">No attendance records for this date</div>
-        )}
-      </div>
+        <TabsContent value="settings">
+          <AttendanceDurationSetter />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
