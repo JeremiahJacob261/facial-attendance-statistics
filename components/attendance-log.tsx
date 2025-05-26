@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Calendar, Download, Filter, Video, VideoOff } from "lucide-react"
+import { Calendar, Download, Filter, Video, VideoOff, Clock } from "lucide-react"
 import { format } from "date-fns"
 import { useMobile } from "@/hooks/use-mobile"
 import { supabase } from "@/lib/supabase"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import FaceDetection from "@/components/face-detection"
+// import FaceDetection from "@/components/face-detection"
 import FaceCompare from "@/components/facecompare"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import AttendanceDurationSetter from "@/components/attendance-duration-setter"
@@ -27,6 +27,7 @@ interface AttendanceRecord {
   student_photo: string | null
   date: string
   status: string
+  created_at: string // Add timestamp field
 }
 
 export default function AttendanceLog() {
@@ -127,6 +128,7 @@ export default function AttendanceLog() {
           student_id,
           date,
           status,
+          created_at,
           ox_students (
             name,
             matric_no,
@@ -135,7 +137,7 @@ export default function AttendanceLog() {
         `)
         .eq("course_id", selectedCourse)
         .eq("date", selectedDate)
-        .order("id")
+        .order("created_at", { ascending: false }) // Order by timestamp, most recent first
 
       if (error) throw error
 
@@ -148,6 +150,7 @@ export default function AttendanceLog() {
         student_photo: record.ox_students.photo_url,
         date: record.date,
         status: record.status,
+        created_at: record.created_at,
       }))
 
       setAttendanceLog(formattedData)
@@ -160,93 +163,57 @@ export default function AttendanceLog() {
   }
 
   const exportAttendance = async () => {
-    if (attendanceLog.length === 0 && !selectedCourse) {
-        console.warn("No attendance data or course selected to export.");
-        // Potentially show a toast message to the user
-        // toast({ title: "Export Failed", description: "No data to export or course not selected.", variant: "destructive" });
-        return;
-    }
     if (!selectedCourse) {
         console.warn("No course selected to export.");
-        // toast({ title: "Export Failed", description: "Please select a course to export attendance.", variant: "destructive" });
         return;
     }
 
     const selectedCourseInfo = courses.find((c) => c.id === selectedCourse)
     const courseCode = selectedCourseInfo ? selectedCourseInfo.code : "Unknown"
 
-    setLoading(true); // Indicate loading state during fetch for export
+    setLoading(true);
 
     try {
-      // 1. Fetch all unique student_ids from ox_attendance for the selected course
-      const { data: attendanceStudentIds, error: studentIdsError } = await supabase
-        .from('ox_attendance')
-        .select('student_id')
-        .eq('course_id', selectedCourse);
+      // Fetch ALL students from ox_students table
+      const { data: allStudents, error: studentsError } = await supabase
+        .from('ox_students')
+        .select('id, name, matric_no')
+        .order('name');
 
-      if (studentIdsError) {
-        console.error('Error fetching student IDs for export:', studentIdsError);
-        // toast({ title: "Export Error", description: "Could not fetch student list for the course.", variant: "destructive" });
+      if (studentsError) {
+        console.error('Error fetching all students for export:', studentsError);
         setLoading(false);
         return;
       }
 
-      let allCourseStudentsList: { id: number; name: string; matric_no: string }[] = [];
-      if (attendanceStudentIds && attendanceStudentIds.length > 0) {
-        const uniqueStudentIds = [...new Set(attendanceStudentIds.map(att => att.student_id))];
+      const allStudentsList = allStudents || [];
 
-        if (uniqueStudentIds.length > 0) {
-          // 2. Fetch details for these student_ids from ox_students
-          const { data: studentsData, error: studentsError } = await supabase
-            .from('ox_students')
-            .select('id, name, matric_no')
-            .in('id', uniqueStudentIds)
-            .order('name'); // Sort students by name
+      // Create a Map of student_ids to their attendance record for the selected date
+      const presentStudentMap = new Map(
+        attendanceLog.map(record => [record.student_id, record])
+      );
 
-          if (studentsError) {
-            console.error('Error fetching student details for export:', studentsError);
-            // toast({ title: "Export Error", description: "Could not fetch student details.", variant: "destructive" });
-            setLoading(false);
-            return;
-          }
-          allCourseStudentsList = studentsData || [];
-        }
-      }
-
-      // 3. `attendanceLog` (students present on selectedDate for selectedCourse) is already in state.
-      // Create a Set of student_ids who were present for quick lookup.
-      const presentStudentIds = new Set(attendanceLog.map(record => record.student_id));
-
-      // 4. Generate CSV content rows
-      const csvRows = allCourseStudentsList.map(student => {
-        const isPresent = presentStudentIds.has(student.id);
-        const status = isPresent ? "Present" : "Absent";
-        // Ensure matric_no and name are not null to avoid "null" string in CSV
+      // Generate CSV content rows with all students
+      const csvRows = allStudentsList.map(student => {
+        const attendanceRecord = presentStudentMap.get(student.id);
+        const isPresent = attendanceRecord !== undefined;
+        const status = isPresent ? attendanceRecord.status || "Present" : "Absent";
+        const timestamp = isPresent 
+          ? format(new Date(attendanceRecord.created_at), "dd/MM/yyyy HH:mm:ss")
+          : "N/A";
+        
         const matricNo = student.matric_no || "N/A";
         const name = student.name || "Unknown Student";
-        return `${matricNo},${name},${status}`;
+        return `${matricNo},${name},${status},${timestamp}`;
       });
-      
-      // If allCourseStudentsList is empty but attendanceLog has entries (e.g. manual entries not tied to a student list)
-      // This case should ideally not happen if data is consistent.
-      // For robustness, if csvRows is empty but attendanceLog is not, fall back to original behavior for those present.
-      let finalCsvRows = csvRows;
-      if (csvRows.length === 0 && attendanceLog.length > 0) {
-          finalCsvRows = attendanceLog.map((record) => {
-            const matricNo = record.student_matric || "N/A";
-            const name = record.student_name || "Unknown Student";
-            // Assuming record.status is "present" as per current logic
-            return `${matricNo},${name},${record.status || "Present"}`;
-          });
-      }
-
 
       const csvContent = [
         `Course: ${courseCode} - ${selectedCourseInfo?.name || "Unknown"}`,
         `Date: ${format(new Date(selectedDate), "dd MMM yyyy")}`,
+        `Export Date: ${format(new Date(), "dd MMM yyyy HH:mm:ss")}`,
         "",
-        "Matric No,Name,Status",
-        ...finalCsvRows,
+        "Matric No,Name,Status,Marked At",
+        ...csvRows,
       ].join("\n")
 
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
@@ -260,7 +227,6 @@ export default function AttendanceLog() {
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error during export process:", error);
-      // toast({ title: "Export Failed", description: "An unexpected error occurred during export.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -370,11 +336,17 @@ export default function AttendanceLog() {
                         {record.student_name.charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium text-sm sm:text-base text-emerald-900">{record.student_name}</p>
                       <p className="text-xs text-emerald-600">
                         {record.student_matric} • {record.status}
                       </p>
+                      <div className="flex items-center gap-1 text-xs text-emerald-500 mt-1">
+                        <Clock className="h-3 w-3" />
+                        <span>
+                          {format(new Date(record.created_at), "dd/MM/yyyy HH:mm:ss")}
+                        </span>
+                      </div>
                     </div>
                   </li>
                 ))}
