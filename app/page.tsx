@@ -29,7 +29,7 @@ export default function Home() {
           Access your attendance statistics and related information.
         </p>
         <button
-          onClick={() => { window.location.href = "https://facereg-stats.vercel.app"; }}
+          onClick={() => { window.location.href = "https://student-smartface.vercel.app"; }}
           className="w-full sm:w-auto rounded bg-sky-500 py-2 px-4 text-white hover:bg-sky-600 transition-colors duration-200"
         >
           Go to Student Stats
