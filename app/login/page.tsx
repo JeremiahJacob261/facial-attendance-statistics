@@ -160,14 +160,15 @@ const LoginPage = () => {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-2 text-center text-sm">
-          <p className="text-muted-foreground">
-            Don&apos;t have an account?{' '}
-            <Link
-              href="/register" // Replace with your signup route
-              className="font-medium text-primary hover:underline"
-            >
-              Sign up
-            </Link>
+          
+          <br/>
+          or
+          <br/>
+           <p className="text-muted-foreground">
+            are you a student?{' '}
+           <a href='https://facereg-stats.vercel.app' target="_blank" className='text-green-300'> 
+            Student Login
+           </a>
           </p>
         </CardFooter>
       </Card>

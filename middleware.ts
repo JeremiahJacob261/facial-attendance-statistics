@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Define public paths that do not require authentication
-const PUBLIC_PATHS = ['/login', '/register', '/api/auth/login', '/api/auth/register'];
+const PUBLIC_PATHS = ['/','/login', '/api/auth/login'];
 // Define the default path for authenticated users
 const AUTHENTICATED_DEFAULT_PATH = '/dashboard'; // Change this to your desired authenticated route
 
@@ -15,7 +15,7 @@ export function middleware(request: NextRequest) {
 
   if (authToken) {
     // If user is authenticated and tries to access login/register, redirect to dashboard
-    if (pathname === '/login' || pathname === '/register') {
+    if (pathname === '/login') {
       return NextResponse.redirect(new URL(AUTHENTICATED_DEFAULT_PATH, request.url));
     }
   } else {
