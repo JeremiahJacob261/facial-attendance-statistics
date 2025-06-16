@@ -58,45 +58,25 @@ const LoginPage = () => {
     setIsLoading(true);
 
     try {
-      const { data: user, error: fetchError } = await supabase
-        .from('ox_lecturer')
-        .select('id, email, password') // Select id for token, password for comparison
-        .eq('email', email)
-        .single();
+      // Check against hardcoded credentials
+      if (email === 'admin@fuoye.edu.ng' && password === 'facereg320') {
+        // Set auth token cookie
+        const tokenValue = 'admin-token'; // Using a simple token for admin
+        document.cookie = `auth-token=${tokenValue}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`; // 7 days expiry
 
-      if (fetchError || !user) {
+        toast({
+          title: "Login Successful",
+          description: "Welcome back!",
+        });
+
+        router.push(AUTHENTICATED_DEFAULT_PATH); // Redirect to dashboard
+      } else {
         toast({
           title: "Login Failed",
           description: "Invalid email or password.",
           variant: "destructive",
         });
-        setIsLoading(false);
-        return;
       }
-
-      const passwordIsValid = await bcrypt.compare(password, user.password);
-
-      if (!passwordIsValid) {
-        toast({
-          title: "Login Failed",
-          description: "Invalid email or password.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      // Set auth token cookie (e.g., using user ID or email)
-      // For production, use a secure, HttpOnly cookie set by an API route.
-      const tokenValue = user.id || user.email; // Using user ID as token content
-      document.cookie = `auth-token=${tokenValue}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`; // 7 days expiry
-
-      toast({
-        title: "Login Successful",
-        description: "Welcome back!",
-      });
-
-      router.push(AUTHENTICATED_DEFAULT_PATH); // Redirect to dashboard
 
     } catch (error: any) {
       console.error('Login process error:', error);
